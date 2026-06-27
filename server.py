@@ -733,8 +733,11 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                             video_path = parse_gradio_result(outputs)
                         
                         if not video_path:
-                            logger.error(f"❌ Job finished but no video path found: Result={repr(result)}, Outputs={repr(outputs)}")
-                            raise RuntimeError("No video path found in Wan2.1 response")
+                            # Parser returned None (likely update message)
+                            # Don't fail - wait for the real result
+                            logger.info(f"⏳ Result is still update message, waiting for real result... Result={repr(result)}, Outputs={repr(outputs)}")
+                            time.sleep(5)
+                            continue  # Wait for next polling attempt
 
                         logger.info(f"✅ Video path found: {video_path}")
                         break
