@@ -211,7 +211,7 @@ def validate_required_env():
         raise RuntimeError("System dependency 'ffprobe' is missing from PATH. Install it first.")
 
     # 2. Walidacja obecności wymaganych zmiennych
-    required = ["HF_TOKEN", "OPENAI_API_KEY", "WORKER_API_KEY"]
+    required = ["HF_TOKEN", "GEMINI_API_KEY", "WORKER_API_KEY"]
     missing = [key for key in required if not os.getenv(key)]
     if missing:
         raise RuntimeError(
