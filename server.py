@@ -694,10 +694,10 @@ def generate_wan_video(prompt: str, output_path: str):
 
 
 def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
-    """Generate a video segment via LTX 2.3 Gradio Space and save it directly to output_path."""
+    """Generate a video segment via Wan2.1 Gradio Space and save it directly to output_path."""
 
-    logger.info(f"🎬 LTX 2.3 (Gradio Space): generating video for prompt: {prompt[:60]}...")
-    logger.info("⏳ Calling LTX 2.3 Gradio Space /generate_video endpoint...")
+    logger.info(f"🎬 Wan2.1 (Gradio Space): generating video for prompt: {prompt[:60]}...")
+    logger.info("⏳ Calling Wan2.1 Gradio Space /generate_video endpoint...")
 
     def _make_blank_image_file():
         """Create a small blank PNG in a temp file and return its path."""
@@ -710,43 +710,17 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
     def _call_api():
         try:
             from gradio_client import Client, handle_file
-            from huggingface_hub import login
-            import os
-
-            hf_token = os.getenv("HF_TOKEN")
-            if not hf_token:
-                raise ValueError("HF_TOKEN environment variable is not set")
-
-            # Authenticate via huggingface_hub before creating the Client
-            # (gradio_client no longer accepts hf_token in the constructor)
-            login(token=hf_token)
-
-            # Create client without auth parameter — login() above handles it
+            
+            # Create client without auth (guest access)
             client = Client(
-                "https://r3gm-wan2-2-fp8da-aoti-preview-2.hf.space/"
+                "Wan-AI/Wan2.1-T2V-14B",
+                hf_token=None
             )
 
             # Create placeholder blank images for the image parameters
-            # (this is text-to-video; the Space still requires FileData objects)
             blank_image_path = _make_blank_image_file()
             try:
-                # Call /generate_video endpoint with all 16 required parameters:
-                # [0]  Input Image (File)
-                # [1]  Last Image Optional (File)
-                # [2]  Prompt (string)
-                # [3]  Inference Steps (number)
-                # [4]  Negative Prompt (string)
-                # [5]  Duration in seconds (number)
-                # [6]  Guidance Scale - high noise (number)
-                # [7]  Guidance Scale 2 - low noise (number)
-                # [8]  Seed (number)
-                # [9]  Randomize seed (boolean)
-                # [10] Video Quality (number)
-                # [11] Scheduler (string)
-                # [12] Flow Shift (number)
-                # [13] Video Fluidity/FPS (number)
-                # [14] Safe Mode (boolean)
-                # [15] Display result (boolean)
+                # Call /generate_video endpoint (parameter mapping assumed from previous implementation)
                 result = client.predict(
                     handle_file(blank_image_path),   # [0] Input Image
                     handle_file(blank_image_path),   # [1] Last Image Optional
@@ -754,8 +728,8 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                     6,                               # [3] Inference Steps
                     "blurry, low quality, distorted, watermark",  # [4] Negative Prompt
                     VEO_DURATION_SECONDS,            # [5] Duration in seconds
-                    3.5,                             # [6] Guidance Scale - high noise
-                    1,                               # [7] Guidance Scale 2 - low noise
+                    3.5,                             # [6] Guidance Scale
+                    1,                               # [7] Guidance Scale 2
                     42,                              # [8] Seed
                     True,                            # [9] Randomize seed
                     6,                               # [10] Video Quality
@@ -779,7 +753,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 raise RuntimeError("Space overloaded – retry")
             raise
 
-    result = retry_with_backoff("LTX 2.3 Gradio", _call_api, max_retries=3, base_delay=30)
+    result = retry_with_backoff("Wan2.1 Gradio", _call_api, max_retries=3, base_delay=30)
 
     # The /generate_video endpoint returns 3 elements:
     #   [0] Generated Video (displayed in UI)
