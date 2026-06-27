@@ -720,14 +720,19 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                         logger.info("Job finished, retrieving result...")
                         result = None
                         outputs = None
+                        
+                        # Try job.result() first
                         try:
-                            # Try job.result() first (modern Gradio approach)
                             result = job.result()
                             logger.debug(f"DEBUG: Job result: {result}")
                             video_path = parse_gradio_result(result)
                         except Exception as e:
                             logger.error(f"Error calling job.result(): {e}")
-                            # Fallback to outputs
+                            video_path = None
+                        
+                        # Fallback to outputs if result() was not useful
+                        if not video_path:
+                            logger.info("Trying job.outputs() fallback...")
                             outputs = job.outputs()
                             logger.debug(f"DEBUG: Job outputs: {outputs}")
                             video_path = parse_gradio_result(outputs)
