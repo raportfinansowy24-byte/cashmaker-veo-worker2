@@ -40,7 +40,7 @@ def init_hf_client():
         hf_token = os.getenv("HF_TOKEN")
         if not hf_token:
             raise ValueError("HF_TOKEN environment variable is not set")
-        HF_CLIENT = InferenceClient(hf_token=None, 
+        HF_CLIENT = InferenceClient(
             provider="fal-ai",
             api_key=hf_token,
         )
@@ -60,7 +60,7 @@ def init_gemini_client():
         gemini_key = os.getenv("GEMINI_API_KEY")
         if not gemini_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set")
-        GEMINI_CLIENT = genai.Client(hf_token=None, api_key=gemini_key)
+        GEMINI_CLIENT = genai.Client(api_key=gemini_key)
         logger.info("✅ Google Gemini Client initialized for story prompts")
     except Exception as e:
         logger.error(f"❌ Failed to initialize GEMINI_CLIENT: {e}")
@@ -712,7 +712,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
             from gradio_client import Client, handle_file
             
             # Create client without auth (guest access)
-            client = Client(hf_token=None, 
+            client = Client(
                 "Wan-AI/Wan2.1"
             )
 
