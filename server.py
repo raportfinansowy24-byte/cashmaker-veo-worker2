@@ -720,11 +720,24 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 api_name="/t2v_generation_async"
             )
 
-            logger.info("✅ Job submitted, waiting for completion (max 20 min)...")
+            logger.info("✅ Job submitted, waiting for completion (polling)...")
 
-            # Block until completion with a 20-minute (1200s) timeout
-            # job.result() directly retrieves the final output if available
-            result = job.result(timeout=1200)
+            # Polling instead of job.result() directly, to handle update messages gracefully
+            start_time = time.time()
+            while time.time() - start_time < 1200:
+                # Sprawdzamy status joba
+                status = job.status()
+                logger.debug(f"Job status: {status.code}")
+                
+                if status.code.value == "FINISHED":
+                    result = job.outputs()
+                    break
+                elif status.code.value == "FAILED":
+                    raise RuntimeError(f"Job failed: {status.error_details}")
+                
+                time.sleep(10)
+            else:
+                raise TimeoutError("Wan2.1 generation timed out (20min limit)")
 
             # Try to extract the video path from the Gradio result structure
             video_path = None
