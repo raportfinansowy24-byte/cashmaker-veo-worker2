@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 import database as db
 import video_processing as vp
+import piper_tts
 
 # ---------------------------------------------------------------------------
 # KONFIGURACJA I INICJALIZACJA
@@ -252,6 +253,17 @@ def validate_required_env():
         except Exception as e:
             logger.error(f"Failed to initialize HF_CLIENT: {e}")
             raise
+
+    # Pre-download the Piper Polish voice model so the first TTS call is instant.
+    # A failure here is non-fatal: the model will be downloaded on first use.
+    try:
+        logger.info("🔊 Pre-downloading Piper voice model at startup...")
+        piper_tts.ensure_voice_downloaded()
+    except Exception as e:
+        logger.warning(
+            f"⚠️  Piper voice pre-download failed: {e}. "
+            "Voice will be downloaded on first TTS call."
+        )
 
 def require_api_key():
     """Wymagaj poprawnego API key w nagłówku Authorization lub X-API-Key."""
