@@ -722,7 +722,9 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
             )
             logger.info("After client.submit()")
 
-            logger.info(f"✅ Job submitted: {job.job_id}. Polling for completion...")
+            # Try to get a job identifier (gradio_client returns a Future-like object)
+            job_identifier = getattr(job, "job_id", "unknown_id")
+            logger.info(f"✅ Job submitted: {job_identifier}. Polling for completion...")
 
             start_time = time.time()
             video_path = None
