@@ -702,10 +702,8 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
     def _call_api():
         try:
             from gradio_client import Client
-
-            # Create client
             client = Client("Wan-AI/Wan2.1")
-
+            
             # Mapping aspect_ratio to size
             size = '1280*720'
             if aspect_ratio == "9:16":
@@ -722,34 +720,35 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 api_name="/t2v_generation_async"
             )
 
-            logger.info("✅ Job submitted, waiting for completion...")
+            logger.info("✅ Job submitted, waiting for completion (max 20 min)...")
 
-            # Poll for result using the job future
-            # Depending on how the Space is implemented, we might need to poll /status_refresh
-            # but let's try the direct job.result() first for better performance.
-            result = job.result(timeout=600) # Wait up to 10 mins
+            # Block until completion with a 20-minute (1200s) timeout
+            # job.result() directly retrieves the final output if available
+            result = job.result(timeout=1200)
 
-            # According to our inspect_api.py, /t2v_generation_async returns (cost_timesecs, estimated_waiting_timesecs)
-            # We likely need to use the job to wait, then poll for results via /status_refresh
-            # Re-implementing poll logic based on the user request to optimize.
-
-            # Poll for result
-            for _ in range(30):
-                result = client.predict(api_name="/status_refresh")
-
-                if isinstance(result, (list, tuple)) and len(result) >= 1 and isinstance(result[0], dict) and 'video' in result[0]:
-                    video_path = result[0]['video']
-                    if video_path:
-                        return video_path
-
-                logger.info("⏳ Still processing, waiting...")
-                time.sleep(20)
-
-            raise RuntimeError("Timed out waiting for video generation")
+            # Try to extract the video path from the Gradio result structure
+            video_path = None
+            if isinstance(result, dict) and 'video' in result:
+                video_path = result['video']
+            elif isinstance(result, (list, tuple)):
+                # Search for the video path in the result structure
+                for item in result:
+                    if isinstance(item, dict) and 'video' in item:
+                        video_path = item['video']
+                        break
+            
+            if not video_path:
+                logger.error(f"❌ Could not find video path in result: {result}")
+                raise RuntimeError("No video path found in Wan2.1 response")
+                
+            return video_path
 
         except Exception as e:
+            logger.error(f"❌ Wan2.1 API error: {e}")
             if "overloaded" in str(e).lower() or "busy" in str(e).lower() or "503" in str(e):
                 raise RuntimeError("Space overloaded – retry")
+            if "timeout" in str(e).lower():
+                raise TimeoutError("Wan2.1 generation timed out (20min limit)")
             raise
 
     video_path = retry_with_backoff("Wan2.1 Gradio", _call_api, max_retries=3, base_delay=30)
