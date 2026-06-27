@@ -638,7 +638,7 @@ Return ONLY the video prompt, no explanations or JSON."""
 
     try:
         def _call_gemini():
-            response = GEMINI_CLIENT.generate_content(gemini_prompt)
+            response = GEMINI_CLIENT.models.generate_content(model="gemini-2.0-flash", contents=gemini_prompt)
             return response.text.strip()
 
         story_prompt = retry_with_backoff("Gemini story prompt", _call_gemini, max_retries=2, base_delay=5)
@@ -713,8 +713,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
             
             # Create client without auth (guest access)
             client = Client(
-                "Wan-AI/Wan2.1-T2V-14B",
-                hf_token=None
+                "Wan-AI/Wan2.1-T2V-14B"
             )
 
             # Create placeholder blank images for the image parameters
