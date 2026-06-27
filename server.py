@@ -713,8 +713,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
             
             # Create client without auth (guest access)
             client = Client(
-                "Wan-AI/Wan2.1-T2V-14B",
-                hf_token=None
+                "Wan-AI/Wan2.1-T2V-14B"
             )
 
             # Create placeholder blank images for the image parameters
