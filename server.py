@@ -678,7 +678,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 size=size,
                 watermark_wan=True,
                 seed=-1,
-                api_name="/t2v_generation"
+                api_name="/t2v_generation_async"
             )
             logger.info("After client.submit()")
 
