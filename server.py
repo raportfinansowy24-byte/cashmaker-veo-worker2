@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 import database as db
 import video_processing as vp
+import kokoro_tts
 
 # ---------------------------------------------------------------------------
 # KONFIGURACJA I INICJALIZACJA
@@ -231,14 +232,9 @@ def validate_required_env():
         except Exception as e:
             raise RuntimeError(f"HF_TOKEN validation failed: {e}")
             
-        # Walidacja OpenAI
-        try:
-            from openai import OpenAI
-            oa_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            oa_client.models.list()
-            logger.info("✅ Klucz OPENAI_API_KEY zweryfikowany pomyślnie.")
-        except Exception as e:
-            raise RuntimeError(f"OPENAI_API_KEY validation failed: {e}")
+        # OPENAI_API_KEY is required for Whisper transcription; presence already
+        # checked above – skip the expensive models.list() call at startup.
+        logger.info("✅ Klucz OPENAI_API_KEY obecny (walidacja przez Whisper przy użyciu).")
 
     else:
         logger.info("🧪 DRY_RUN lub TESTING włączony - pomijam twardą walidację kluczy API.")
@@ -972,13 +968,10 @@ def generate_nava_video(
 
 
 def generate_tts_audio_narration(narration_texts, job_id):
-    """Create real audio files using Kokoro-82M TTS."""
-    if not HF_CLIENT:
-        raise RuntimeError("HF_CLIENT not initialized.")
-        
+    """Create real audio files using Kokoro-82M TTS (free HF Space)."""
     audio_files = {}
     for scene_key, text in narration_texts.items():
-        audio_file = os.path.join(tempfile.gettempdir(), f"narration_{scene_key}_{job_id}.mp3")
+        audio_file = os.path.join(tempfile.gettempdir(), f"narration_{scene_key}_{job_id}.wav")
         
         if os.path.exists(audio_file):
             logger.info(f"⏩ Audio {scene_key} już istnieje – pomijam.")
@@ -988,11 +981,11 @@ def generate_tts_audio_narration(narration_texts, job_id):
 
         logger.info(f"🔊 Generuję TTS: {scene_key}...")
         
-        # Kokoro-82M via HuggingFace InferenceClient
-        audio_bytes = HF_CLIENT.text_to_speech(
-            text,
-            model="hexgrad/Kokoro-82M",
-        )
+        # Kokoro-82M via free official HuggingFace Space (no credits required)
+        audio_bytes = kokoro_tts.generate_kokoro_tts(text)
+        
+        if audio_bytes is None:
+            raise RuntimeError(f"Kokoro TTS failed for scene '{scene_key}' – generate_kokoro_tts returned None.")
         
         with open(audio_file, "wb") as f:
             f.write(audio_bytes)
