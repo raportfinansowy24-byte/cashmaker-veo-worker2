@@ -712,7 +712,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
             from gradio_client import Client, handle_file
             
             # Create client without auth (guest access)
-            client = Client(hf_token=None, 
+            client = Client(
                 "Wan-AI/Wan2.1"
             )
 
