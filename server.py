@@ -972,13 +972,10 @@ def generate_nava_video(
 
 
 def generate_tts_audio_narration(narration_texts, job_id):
-    """Create real audio files using Kokoro-82M TTS."""
-    if not HF_CLIENT:
-        raise RuntimeError("HF_CLIENT not initialized.")
-        
+    """Create real audio files using Piper TTS with Polish language support."""
     audio_files = {}
     for scene_key, text in narration_texts.items():
-        audio_file = os.path.join(tempfile.gettempdir(), f"narration_{scene_key}_{job_id}.mp3")
+        audio_file = os.path.join(tempfile.gettempdir(), f"narration_{scene_key}_{job_id}.wav")
         
         if os.path.exists(audio_file):
             logger.info(f"⏩ Audio {scene_key} już istnieje – pomijam.")
@@ -986,17 +983,14 @@ def generate_tts_audio_narration(narration_texts, job_id):
             audio_files[scene_key] = {"path": audio_file, "duration": duration, "text": text}
             continue
 
-        logger.info(f"🔊 Generuję TTS: {scene_key}...")
+        logger.info(f"🔊 Generuję TTS (Piper - polski): {scene_key}...")
         
-        # Kokoro-82M via HuggingFace InferenceClient
-        audio_bytes = HF_CLIENT.text_to_speech(
-            text,
-            model="hexgrad/Kokoro-82M",
-        )
+        # Piper TTS with Polish language support
+        try:
+            piper_tts.generate_piper_tts(text, audio_file)
+        except RuntimeError as e:
+            raise RuntimeError(f"Piper TTS failed for scene '{scene_key}': {e}")
         
-        with open(audio_file, "wb") as f:
-            f.write(audio_bytes)
-            
         duration = vp.get_audio_duration(audio_file)
         audio_files[scene_key] = {"path": audio_file, "duration": duration, "text": text}
         logger.info(f"✅ TTS {scene_key} wygenerowany: {audio_file}")
