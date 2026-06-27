@@ -724,45 +724,29 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
 
             # Polling instead of job.result() directly, to handle update messages gracefully
             start_time = time.time()
+            final_result = None
+            
             while time.time() - start_time < 1200:
                 # Sprawdzamy status joba
                 status = job.status()
-                logger.debug(f"Job status: {status.code}")
+                logger.info(f"⏳ Job status: {status.code}")
                 
                 if status.code.value == "FINISHED":
-                    result = job.outputs()
+                    final_result = job.outputs()
                     break
                 elif status.code.value == "FAILED":
                     raise RuntimeError(f"Job failed: {status.error_details}")
                 
-                time.sleep(10)
+                # Używamy job.outputs() też w trakcie, bo czasami tam lądują update'y
+                # ale interesuje nas wynik finalny tylko w FINISHED
+                time.sleep(15)
             else:
                 raise TimeoutError("Wan2.1 generation timed out (20min limit)")
 
-            # Try to extract the video path from the Gradio result structure
-            video_path = None
-            
-            # The result might be a list containing updates and the final result
-            if isinstance(result, (list, tuple)):
-                # Search for the video path in the result structure, ignoring updates
-                for item in result:
-                    if isinstance(item, dict):
-                        if 'video' in item and item['video']:
-                            video_path = item['video']
-                            break
-                        # Sometimes the path is inside a list in the dict
-                        elif 'path' in item and item['path']:
-                            video_path = item['path']
-                            break
-            elif isinstance(result, dict):
-                 if 'video' in result and result['video']:
-                    video_path = result['video']
-                 elif 'path' in result and result['path']:
-                    video_path = result['path']
-            
-            if not video_path:
-                logger.error(f"❌ DIAGNOSTICS: Could not find video path. Result type: {type(result)}, Content: {repr(result)}")
-                raise RuntimeError("No video path found in Wan2.1 response")
+            if final_result is None:
+                raise RuntimeError("Job finished but no outputs were retrieved.")
+
+            result = final_result
 
         except Exception as e:
             logger.error(f"❌ Wan2.1 API error: {e}")
