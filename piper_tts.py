@@ -6,6 +6,7 @@ Voice model: pl_PL-mc_speech-medium
 
 import os
 import logging
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -16,14 +17,12 @@ PIPER_VOICE_DIR = os.path.expanduser("~/.local/share/piper/voices")
 def ensure_voice_downloaded():
     """Check if the Polish Piper voice model is cached; download it if not.
 
-    Uses piper.download_voices() to fetch and cache the model in the default
+    Uses `piper --download-voice` CLI to fetch and cache the model in the default
     Piper voice directory (~/.local/share/piper/voices/).
 
     Returns True if the voice is available after the call, False on failure.
     """
     try:
-        import piper
-
         os.makedirs(PIPER_VOICE_DIR, exist_ok=True)
 
         # Check whether the model files are already present.  Piper stores the
@@ -36,7 +35,20 @@ def ensure_voice_downloaded():
             return True
 
         logger.info(f"⬇️  Downloading Piper voice model: {PIPER_VOICE} ...")
-        piper.download_voices([PIPER_VOICE], download_dir=PIPER_VOICE_DIR)
+        
+        # Use piper CLI to download the voice
+        result = subprocess.run(
+            ["piper", "--download-voice", PIPER_VOICE],
+            capture_output=True,
+            timeout=300,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            logger.warning(f"⚠️  Piper download returned code {result.returncode}: {result.stderr}")
+            # Don't fail - voice might be downloaded on first use
+            return False
+        
         logger.info(f"✅ Piper voice downloaded and cached: {PIPER_VOICE}")
         return True
 
