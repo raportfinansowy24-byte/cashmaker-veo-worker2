@@ -549,7 +549,7 @@ Only output the JSON, nothing else."""
 
     def _call_gemini():
         response = GEMINI_CLIENT.models.generate_content(
-            model="gemini-3.1-flash-lite-lite-lite",
+            model="gemini-3.1-flash-lite",
             contents=gemini_prompt
         )
         return response.text.strip()
