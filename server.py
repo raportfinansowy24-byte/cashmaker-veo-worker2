@@ -872,7 +872,7 @@ def generate_nava_video(
 
         login(token=hf_token)
 
-        client = Client(f"https://huggingface.co/spaces/{NAVA_SPACE_ID}", hf_token=None)
+        client = Client(f"https://huggingface.co/spaces/{NAVA_SPACE_ID}")
 
         result = client.predict(
             prompt,          # Prompt (str)
