@@ -703,7 +703,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
         try:
             from gradio_client import Client
             client = Client("Wan-AI/Wan2.1")
-            
+
             # Mapping aspect_ratio to size
             size = '1280*720'
             if aspect_ratio == "9:16":
@@ -720,71 +720,73 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 api_name="/t2v_generation_async"
             )
 
-            logger.info("✅ Job submitted, waiting for completion (polling outputs)...")
+            logger.info(f"✅ Job submitted: {job.job_id}. Polling for completion...")
 
-            # Polling instead of job.result() directly, to handle update messages gracefully
             start_time = time.time()
             video_path = None
-            
-            while time.time() - start_time < 1200:
-                # Sprawdzamy wyjścia joba w poszukiwaniu danych
+            polling_attempt = 0
+
+            # Polling loop
+            while time.time() - start_time < MAX_JOB_DURATION_SECONDS:
+                polling_attempt += 1
+                elapsed = time.time() - start_time
+
+                # Check status first (non-blocking)
                 try:
-                    outputs = job.outputs()
-                    logger.debug(f"Current outputs: {repr(outputs)}")
-                    
-                    # Logika ekstrakcji: szukamy 'video' lub 'path' w strukturze wyjść
-                    if outputs:
-                        # Przeszukujemy strukturę wyjść (może być listą lub krotką)
-                        for item in outputs:
-                            # Obsługa struktury typu (data1, data2)
-                            if isinstance(item, (list, tuple)):
-                                for subitem in item:
-                                    if isinstance(subitem, dict):
-                                        if 'video' in subitem and subitem['video']:
-                                            video_path = subitem['video']
-                                            break
-                                        elif 'path' in subitem and subitem['path']:
-                                            video_path = subitem['path']
-                                            break
-                            # Obsługa bezpośrednich słowników w liście
-                            elif isinstance(item, dict):
-                                if 'video' in item and item['video']:
-                                    video_path = item['video']
-                                    break
-                                elif 'path' in item and item['path']:
-                                    video_path = item['path']
-                                    break
-                            
-                            if video_path: break
-                    
-                    if video_path:
-                        logger.info("✅ Video path found!")
-                        break
+                    status = job.status()
+                    current_status = status.code.value
+                    logger.info(f"Polling attempt #{polling_attempt} | Elapsed: {elapsed:.0f}s | Status: {current_status}")
+
+                    if current_status == "FINISHED":
+                        logger.info("Job finished, retrieving outputs...")
+                        outputs = job.outputs()
                         
+                        # Extract logic
+                        if outputs:
+                            for item in outputs:
+                                if isinstance(item, (list, tuple)):
+                                    for subitem in item:
+                                        if isinstance(subitem, dict):
+                                            video_path = subitem.get('video') or subitem.get('path')
+                                            if video_path: break
+                                elif isinstance(item, dict):
+                                    video_path = item.get('video') or item.get('path')
+                                    if video_path: break
+                                if video_path: break
+                        
+                        if not video_path:
+                            logger.error(f"❌ Job finished but no video path found in outputs: {repr(outputs)}")
+                            raise RuntimeError("No video path found in Wan2.1 response")
+                        
+                        logger.info(f"✅ Video path found: {video_path}")
+                        break
+                    elif current_status == "FAILED":
+                        raise RuntimeError(f"Job failed: {status.error_details}")
+                    elif current_status == "CANCELLED":
+                        raise RuntimeError("Job was cancelled")
+
                 except Exception as e:
-                    logger.debug(f"Polling outputs failed (likely still processing): {e}")
+                    logger.error(f"Error checking status: {e}")
+                    # traceback...
 
-                # Sprawdzamy czy job nie wywalił się
-                status = job.status()
-                if status.code.value == "FAILED":
-                    raise RuntimeError(f"Job failed: {status.error_details}")
-                
-                time.sleep(15)
-            else:
-                raise TimeoutError("Wan2.1 generation timed out (20min limit)")
+                time.sleep(5) # 5s interval
 
-            if not video_path:
-                logger.error(f"❌ DIAGNOSTICS: Could not find video path. Final output: {repr(outputs)}")
-                raise RuntimeError("No video path found in Wan2.1 response")
-            
-            return video_path
+            # Extract video_path from outputs...
 
+            # Download with retry mechanism
+            def _download_video():
+                logger.info(f"💾 Downloading video from {video_path}...")
+                response = requests.get(video_path, stream=True, timeout=60)
+                response.raise_for_status()
+                with open(output_path, "wb") as f:
+                    shutil.copyfileobj(response.raw, f)
+                logger.info(f"✅ Video saved to {output_path}")
+
+            retry_with_backoff("Download Wan2.1 video", _download_video, max_retries=3, base_delay=10)
+
+            return output_path
         except Exception as e:
-            logger.error(f"❌ Wan2.1 API error: {e}")
-            if "overloaded" in str(e).lower() or "busy" in str(e).lower() or "503" in str(e):
-                raise RuntimeError("Space overloaded – retry")
-            if "timeout" in str(e).lower():
-                raise TimeoutError("Wan2.1 generation timed out (20min limit)")
+            logger.error(f"❌ Wan2.1 API/Download error: {e}")
             raise
 
     video_path = retry_with_backoff("Wan2.1 Gradio", _call_api, max_retries=3, base_delay=30)
