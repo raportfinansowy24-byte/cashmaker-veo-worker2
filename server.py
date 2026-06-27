@@ -693,6 +693,40 @@ def generate_wan_video(prompt: str, output_path: str):
     return output_path
 
 
+def parse_gradio_result(result):
+    """Parses Gradio result to extract a video path."""
+    logger.debug(f"DEBUG: Parsing Gradio result: {result}")
+    
+    # Define potential keys for video path
+    path_keys = ['video', 'path', 'url', 'file']
+    
+    def _extract_from_dict(d):
+        if not isinstance(d, dict):
+            return None
+        for key in path_keys:
+            if key in d:
+                val = d[key]
+                # If it's a Gradio file object, it might have a 'path' attribute or be a dict itself
+                if hasattr(val, 'path'): return val.path
+                if isinstance(val, dict) and 'path' in val: return val['path']
+                return val
+        return None
+
+    # Handle different result types
+    if isinstance(result, (list, tuple)):
+        for item in result:
+            found = _extract_from_dict(item)
+            if found: return found
+            # Sometimes the result is a list of paths/files directly
+            if isinstance(item, str) and item.startswith(('http', '/')): return item
+    elif isinstance(result, dict):
+        return _extract_from_dict(result)
+    elif isinstance(result, str) and result.startswith(('http', '/')):
+        return result
+        
+    return None
+
+
 def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
     """Generate a video segment via Wan2.1 API and save it directly to output_path."""
 
@@ -754,39 +788,6 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                         logger.debug(f"DEBUG: Job outputs: {job.outputs()}")
                     except Exception as e:
                         logger.debug(f"DEBUG: Job outputs not available yet: {e}")
-
-def parse_gradio_result(result):
-    """Parses Gradio result to extract a video path."""
-    logger.debug(f"DEBUG: Parsing Gradio result: {result}")
-    
-    # Define potential keys for video path
-    path_keys = ['video', 'path', 'url', 'file']
-    
-    def _extract_from_dict(d):
-        if not isinstance(d, dict):
-            return None
-        for key in path_keys:
-            if key in d:
-                val = d[key]
-                # If it's a Gradio file object, it might have a 'path' attribute or be a dict itself
-                if hasattr(val, 'path'): return val.path
-                if isinstance(val, dict) and 'path' in val: return val['path']
-                return val
-        return None
-
-    # Handle different result types
-    if isinstance(result, (list, tuple)):
-        for item in result:
-            found = _extract_from_dict(item)
-            if found: return found
-            # Sometimes the result is a list of paths/files directly
-            if isinstance(item, str) and item.startswith(('http', '/')): return item
-    elif isinstance(result, dict):
-        return _extract_from_dict(result)
-    elif isinstance(result, str) and result.startswith(('http', '/')):
-        return result
-        
-    return None
 
 # ... inside _call_api() ...
                     if current_status == "FINISHED":
