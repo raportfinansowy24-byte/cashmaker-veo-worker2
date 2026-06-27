@@ -40,7 +40,7 @@ def init_hf_client():
         hf_token = os.getenv("HF_TOKEN")
         if not hf_token:
             raise ValueError("HF_TOKEN environment variable is not set")
-        HF_CLIENT = InferenceClient(hf_token=None, 
+        HF_CLIENT = InferenceClient(token=None, 
             provider="fal-ai",
             api_key=hf_token,
         )
@@ -60,7 +60,7 @@ def init_gemini_client():
         gemini_key = os.getenv("GEMINI_API_KEY")
         if not gemini_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set")
-        GEMINI_CLIENT = genai.Client(hf_token=None, api_key=gemini_key)
+        GEMINI_CLIENT = genai.Client(api_key=gemini_key)
         logger.info("✅ Google Gemini Client initialized for story prompts")
     except Exception as e:
         logger.error(f"❌ Failed to initialize GEMINI_CLIENT: {e}")
@@ -863,23 +863,20 @@ def generate_nava_video(
     )
 
     def _call_nava_api():
-        from gradio_client import Client
-        from huggingface_hub import login
+        from gradio_client import Client, handle_file
 
-        hf_token = os.getenv("HF_TOKEN")
-        if not hf_token:
-            raise ValueError("HF_TOKEN environment variable is not set")
-
-        login(token=hf_token)
-
-        client = Client(f"https://huggingface.co/spaces/{NAVA_SPACE_ID}", hf_token=None)
+        client = Client(NAVA_SPACE_ID)
 
         result = client.predict(
-            prompt,          # Prompt (str)
-            duration_sec,    # Duration in seconds (float)
-            aspect_ratio,    # Aspect ratio (str)
-            steps,           # Inference steps (float)
-            api_name="/generate",
+            user_prompt=prompt,
+            rewritten_prompt=prompt,
+            image_file=None,
+            spk_wav_1=None,
+            spk_wav_2=None,
+            steps=steps,
+            duration_sec=duration_sec,
+            aspect_ratio=aspect_ratio,
+            api_name="/infer_fn"
         )
         return result
 
@@ -1583,24 +1580,20 @@ def render_sequence_background(job_id, raw_data, webhook_url=None, resume_from=N
         METRICS["jobs_failed"] += 1
         METRICS["last_error"] = str(e)
 
-        job_paused = True
-        save_checkpoint(job_id, current_stage, error=str(e))
-        logger.error(f"⏸️ Job {job_id} PAUSED at '{current_stage}': {e}")
+        save_render_to_db(job_id, topic, 'failed', error=str(e))
+        logger.error(f"❌ Job {job_id} FAILED at '{current_stage}': {e}")
 
         if webhook_url:
             try:
                 webhook_payload = {
-                    "event_type": "render.paused",
+                    "event_type": "render.failed",
                     "job_id": job_id,
-                    "status": "paused",
-                    "paused_at_stage": current_stage,
+                    "status": "failed",
                     "error": str(e),
-                    "resume_url": f"https://{raw_data.get('host', 'localhost:5000')}/resume/{job_id}",
-                    "source": "cashmaker-veo-worker",
                     "timestamp": datetime.utcnow().isoformat()
                 }
                 send_webhook(webhook_url, webhook_payload)
-                logger.info(f"🔔 Webhook pauzy wysłany")
+                logger.info(f"🔔 Webhook błędu wysłany")
             except Exception as webhook_error:
                 logger.error(f"⚠️ Błąd webhook: {webhook_error}")
 
