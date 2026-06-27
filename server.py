@@ -620,6 +620,9 @@ def parse_gradio_result(result):
     def _extract_from_dict(d):
         if not isinstance(d, dict):
             return None
+        # Skip Gradio update messages
+        if d.get('__type__') == 'update':
+            return None
         for key in path_keys:
             if key in d:
                 val = d[key]
@@ -632,11 +635,17 @@ def parse_gradio_result(result):
     # Handle different result types
     if isinstance(result, (list, tuple)):
         for item in result:
+            # Skip Gradio update messages
+            if isinstance(item, dict) and item.get('__type__') == 'update':
+                continue
             found = _extract_from_dict(item)
             if found: return found
             # Sometimes the result is a list of paths/files directly
             if isinstance(item, str) and item.startswith(('http', '/')): return item
     elif isinstance(result, dict):
+        # Skip Gradio update messages
+        if result.get('__type__') == 'update':
+            return None
         return _extract_from_dict(result)
     elif isinstance(result, str) and result.startswith(('http', '/')):
         return result
