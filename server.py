@@ -40,7 +40,7 @@ def init_hf_client():
         hf_token = os.getenv("HF_TOKEN")
         if not hf_token:
             raise ValueError("HF_TOKEN environment variable is not set")
-        HF_CLIENT = InferenceClient(
+        HF_CLIENT = InferenceClient(hf_token=None, 
             provider="fal-ai",
             api_key=hf_token,
         )
@@ -60,7 +60,7 @@ def init_gemini_client():
         gemini_key = os.getenv("GEMINI_API_KEY")
         if not gemini_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set")
-        GEMINI_CLIENT = genai.Client(api_key=gemini_key)
+        GEMINI_CLIENT = genai.Client(hf_token=None, api_key=gemini_key)
         logger.info("✅ Google Gemini Client initialized for story prompts")
     except Exception as e:
         logger.error(f"❌ Failed to initialize GEMINI_CLIENT: {e}")
@@ -549,7 +549,7 @@ Only output the JSON, nothing else."""
 
     def _call_gemini():
         response = GEMINI_CLIENT.models.generate_content(
-            model="gemini-3.1-flash-lite-lite",
+            model="gemini-3.1-flash-lite-lite-lite",
             contents=gemini_prompt
         )
         return response.text.strip()
@@ -638,7 +638,7 @@ Return ONLY the video prompt, no explanations or JSON."""
 
     try:
         def _call_gemini():
-            response = GEMINI_CLIENT.models.generate_content(model="gemini-2.0-flash", contents=gemini_prompt)
+            response = GEMINI_CLIENT.models.generate_content(model="gemini-3.1-flash-lite", contents=gemini_prompt)
             return response.text.strip()
 
         story_prompt = retry_with_backoff("Gemini story prompt", _call_gemini, max_retries=2, base_delay=5)
@@ -712,7 +712,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
             from gradio_client import Client, handle_file
             
             # Create client without auth (guest access)
-            client = Client(
+            client = Client(hf_token=None, 
                 "Wan-AI/Wan2.1"
             )
 
@@ -889,7 +889,7 @@ def generate_nava_video(
 
         login(token=hf_token)
 
-        client = Client(f"https://huggingface.co/spaces/{NAVA_SPACE_ID}")
+        client = Client(hf_token=None, f"https://huggingface.co/spaces/{NAVA_SPACE_ID}")
 
         result = client.predict(
             prompt,          # Prompt (str)
