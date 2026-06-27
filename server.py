@@ -694,88 +694,70 @@ def generate_wan_video(prompt: str, output_path: str):
 
 
 def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
-    """Generate a video segment via Wan2.1 Gradio Space and save it directly to output_path."""
+    """Generate a video segment via Wan2.1 API and save it directly to output_path."""
 
-    logger.info(f"🎬 Wan2.1 (Gradio Space): generating video for prompt: {prompt[:60]}...")
-    logger.info("⏳ Calling Wan2.1 Gradio Space /generate_video endpoint...")
-
-    def _make_blank_image_file():
-        """Create a small blank PNG in a temp file and return its path."""
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        img = Image.new("RGB", (64, 64), color=(0, 0, 0))
-        img.save(tmp.name, format="PNG")
-        tmp.close()
-        return tmp.name
+    logger.info(f"🎬 Wan2.1: generating video for prompt: {prompt[:60]}...")
+    logger.info("⏳ Calling Wan2.1 API /t2v_generation_async endpoint (async)...")
 
     def _call_api():
         try:
-            from gradio_client import Client, handle_file
-            
-            # Create client without auth (guest access)
-            client = Client(hf_token=None, 
-                "Wan-AI/Wan2.1"
+            from gradio_client import Client
+
+            # Create client
+            client = Client("Wan-AI/Wan2.1")
+
+            # Mapping aspect_ratio to size
+            size = '1280*720'
+            if aspect_ratio == "9:16":
+                size = '720*1280'
+            elif aspect_ratio == "1:1":
+                size = '960*960'
+
+            # Submit job asynchronously
+            job = client.submit(
+                prompt=prompt,
+                size=size,
+                watermark_wan=True,
+                seed=-1,
+                api_name="/t2v_generation_async"
             )
 
-            # Create placeholder blank images for the image parameters
-            blank_image_path = _make_blank_image_file()
-            try:
-                # Call /generate_video endpoint (parameter mapping assumed from previous implementation)
-                result = client.predict(
-                    handle_file(blank_image_path),   # [0] Input Image
-                    handle_file(blank_image_path),   # [1] Last Image Optional
-                    prompt,                          # [2] Prompt
-                    6,                               # [3] Inference Steps
-                    "blurry, low quality, distorted, watermark",  # [4] Negative Prompt
-                    VEO_DURATION_SECONDS,            # [5] Duration in seconds
-                    3.5,                             # [6] Guidance Scale
-                    1,                               # [7] Guidance Scale 2
-                    42,                              # [8] Seed
-                    True,                            # [9] Randomize seed
-                    6,                               # [10] Video Quality
-                    "UniPCMultistep",                # [11] Scheduler
-                    3,                               # [12] Flow Shift
-                    16,                              # [13] Video Fluidity/FPS
-                    True,                            # [14] Safe Mode
-                    True,                            # [15] Display result
-                    api_name="/generate_video"
-                )
-            finally:
-                # Clean up the temporary blank image
-                try:
-                    os.unlink(blank_image_path)
-                except OSError:
-                    pass
+            logger.info("✅ Job submitted, waiting for completion...")
 
-            return result
+            # Poll for result using the job future
+            # Depending on how the Space is implemented, we might need to poll /status_refresh
+            # but let's try the direct job.result() first for better performance.
+            result = job.result(timeout=600) # Wait up to 10 mins
+
+            # According to our inspect_api.py, /t2v_generation_async returns (cost_timesecs, estimated_waiting_timesecs)
+            # We likely need to use the job to wait, then poll for results via /status_refresh
+            # Re-implementing poll logic based on the user request to optimize.
+
+            # Poll for result
+            for _ in range(30):
+                result = client.predict(api_name="/status_refresh")
+
+                if isinstance(result, (list, tuple)) and len(result) >= 1 and isinstance(result[0], dict) and 'video' in result[0]:
+                    video_path = result[0]['video']
+                    if video_path:
+                        return video_path
+
+                logger.info("⏳ Still processing, waiting...")
+                time.sleep(20)
+
+            raise RuntimeError("Timed out waiting for video generation")
+
         except Exception as e:
             if "overloaded" in str(e).lower() or "busy" in str(e).lower() or "503" in str(e):
                 raise RuntimeError("Space overloaded – retry")
             raise
 
-    result = retry_with_backoff("Wan2.1 Gradio", _call_api, max_retries=3, base_delay=30)
-
-    # The /generate_video endpoint returns 3 elements:
-    #   [0] Generated Video (displayed in UI)
-    #   [1] Download Video File (the actual downloadable file path/URL)
-    #   [2] Seed (number used for generation)
-    # We prefer [1] (download file) and fall back to [0] (display video).
-    video_path = None
-    if isinstance(result, (list, tuple)) and len(result) >= 1:
-        # Try [1] first (download file), then [0] (display video)
-        for idx in (1, 0):
-            if idx < len(result):
-                candidate = result[idx]
-                if isinstance(candidate, dict):
-                    video_path = candidate.get("video") or candidate.get("path") or candidate.get("url")
-                elif isinstance(candidate, str) and candidate:
-                    video_path = candidate
-                if video_path:
-                    break
+    video_path = retry_with_backoff("Wan2.1 Gradio", _call_api, max_retries=3, base_delay=30)
 
     if not video_path:
-        raise RuntimeError(f"No video path found in LTX 2.3 /generate_video response: {result}")
+        raise RuntimeError(f"No video path found in Wan2.1 response")
 
-    # Download video from Gradio temp URL to output_path
+    # Download/Copy video
     if video_path.startswith("http"):
         logger.info(f"📥 Downloading video from {video_path[:80]}...")
         response = requests.get(video_path, timeout=300)
@@ -790,6 +772,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
         logger.info(f"✅ Video copied to {output_path}")
 
     return output_path
+
 
 
 def generate_video_segment(prompt, aspect_ratio="9:16"):
@@ -889,7 +872,7 @@ def generate_nava_video(
 
         login(token=hf_token)
 
-        client = Client(hf_token=None, f"https://huggingface.co/spaces/{NAVA_SPACE_ID}")
+        client = Client(f"https://huggingface.co/spaces/{NAVA_SPACE_ID}", hf_token=None)
 
         result = client.predict(
             prompt,          # Prompt (str)
