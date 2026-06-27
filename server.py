@@ -1794,6 +1794,7 @@ def get_task_status(task_id):
     render = get_render_from_db(task_id)
 
     if not render:
+        logger.warning(f"❌ Zadanie nie znalezione w bazie: {task_id}")
         return jsonify({"error": "Task not found"}), 404
 
     response = {

@@ -154,5 +154,23 @@ class TestHunyuanVideoAPI(unittest.TestCase):
         self.assertTrue(data["job_id"])
         self.assertTrue(data["status_url"])
 
+    def test_get_task_status(self):
+        """Verify that GET /tasks/<id> returns the task status if it exists."""
+        # Ensure database is initialized for test
+        import database as db
+        db.init_db(server.DB_PATH)
+        
+        # Add a job to DB first
+        job_id = "test-job-123"
+        server.save_render_to_db(job_id, "Test Topic", "processing")
+        
+        headers = {"X-API-Key": "secret_test_key"}
+        response = self.client.get(f"/tasks/{job_id}", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["job_id"], job_id)
+        self.assertEqual(data["state"], "processing")
+
 if __name__ == "__main__":
     unittest.main()
