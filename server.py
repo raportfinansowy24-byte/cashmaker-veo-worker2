@@ -748,9 +748,8 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                     video_path = result['path']
             
             if not video_path:
-                raise RuntimeError(f"No video path found in Wan2.1 response. Result type: {type(result)}, Content: {repr(result)}")
-                
-            return video_path
+                logger.error(f"❌ DIAGNOSTICS: Could not find video path. Result type: {type(result)}, Content: {repr(result)}")
+                raise RuntimeError("No video path found in Wan2.1 response")
 
         except Exception as e:
             logger.error(f"❌ Wan2.1 API error: {e}")
