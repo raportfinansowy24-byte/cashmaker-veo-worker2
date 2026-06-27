@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 import database as db
 import video_processing as vp
+import piper_tts
 
 # ---------------------------------------------------------------------------
 # KONFIGURACJA I INICJALIZACJA
