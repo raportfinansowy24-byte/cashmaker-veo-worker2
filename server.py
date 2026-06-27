@@ -743,33 +743,73 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
 
                     current_status = status.code.value
                     logger.info(f"Polling attempt #{polling_attempt} | Elapsed: {elapsed:.0f}s | Status: {current_status}")
+                    
+                    # Log full objects for debugging
+                    logger.debug(f"DEBUG: Status object: {status}")
+                    try:
+                        logger.debug(f"DEBUG: Job result: {job.result()}")
+                    except Exception as e:
+                        logger.debug(f"DEBUG: Job result not available yet: {e}")
+                    try:
+                        logger.debug(f"DEBUG: Job outputs: {job.outputs()}")
+                    except Exception as e:
+                        logger.debug(f"DEBUG: Job outputs not available yet: {e}")
 
+def parse_gradio_result(result):
+    """Parses Gradio result to extract a video path."""
+    logger.debug(f"DEBUG: Parsing Gradio result: {result}")
+    
+    # Define potential keys for video path
+    path_keys = ['video', 'path', 'url', 'file']
+    
+    def _extract_from_dict(d):
+        if not isinstance(d, dict):
+            return None
+        for key in path_keys:
+            if key in d:
+                val = d[key]
+                # If it's a Gradio file object, it might have a 'path' attribute or be a dict itself
+                if hasattr(val, 'path'): return val.path
+                if isinstance(val, dict) and 'path' in val: return val['path']
+                return val
+        return None
+
+    # Handle different result types
+    if isinstance(result, (list, tuple)):
+        for item in result:
+            found = _extract_from_dict(item)
+            if found: return found
+            # Sometimes the result is a list of paths/files directly
+            if isinstance(item, str) and item.startswith(('http', '/')): return item
+    elif isinstance(result, dict):
+        return _extract_from_dict(result)
+    elif isinstance(result, str) and result.startswith(('http', '/')):
+        return result
+        
+    return None
+
+# ... inside _call_api() ...
                     if current_status == "FINISHED":
-                        logger.info("Job finished, retrieving outputs...")
-                        logger.info("Before job.outputs()")
-                        outputs = job.outputs()
-                        logger.info("After job.outputs()")
-
-                        # Extract logic
-                        if outputs:
-                            # ... (keep extraction logic)
-                            for item in outputs:
-                                if isinstance(item, (list, tuple)):
-                                    for subitem in item:
-                                        if isinstance(subitem, dict):
-                                            video_path = subitem.get('video') or subitem.get('path')
-                                            if video_path: break
-                                elif isinstance(item, dict):
-                                    video_path = item.get('video') or item.get('path')
-                                    if video_path: break
-                                if video_path: break
-
+                        logger.info("Job finished, retrieving result...")
+                        try:
+                            # Try job.result() first (modern Gradio approach)
+                            result = job.result()
+                            logger.debug(f"DEBUG: Job result: {result}")
+                            video_path = parse_gradio_result(result)
+                        except Exception as e:
+                            logger.error(f"Error calling job.result(): {e}")
+                            # Fallback to outputs
+                            outputs = job.outputs()
+                            logger.debug(f"DEBUG: Job outputs: {outputs}")
+                            video_path = parse_gradio_result(outputs)
+                        
                         if not video_path:
-                            logger.error(f"❌ Job finished but no video path found in outputs: {repr(outputs)}")
+                            logger.error(f"❌ Job finished but no video path found: Result={repr(result)}, Outputs={repr(outputs)}")
                             raise RuntimeError("No video path found in Wan2.1 response")
 
                         logger.info(f"✅ Video path found: {video_path}")
                         break
+
                     elif current_status == "FAILED":
                         raise RuntimeError(f"Job failed: {status.error_details}")
                     elif current_status == "CANCELLED":
