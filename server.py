@@ -712,6 +712,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 size = '960*960'
 
             # Submit job asynchronously
+            logger.info("Before client.submit()")
             job = client.submit(
                 prompt=prompt,
                 size=size,
@@ -719,6 +720,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 seed=-1,
                 api_name="/t2v_generation_async"
             )
+            logger.info("After client.submit()")
 
             logger.info(f"✅ Job submitted: {job.job_id}. Polling for completion...")
 
@@ -733,16 +735,22 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
 
                 # Check status first (non-blocking)
                 try:
+                    logger.info("Before job.status()")
                     status = job.status()
+                    logger.info("After job.status()")
+
                     current_status = status.code.value
                     logger.info(f"Polling attempt #{polling_attempt} | Elapsed: {elapsed:.0f}s | Status: {current_status}")
 
                     if current_status == "FINISHED":
                         logger.info("Job finished, retrieving outputs...")
+                        logger.info("Before job.outputs()")
                         outputs = job.outputs()
-                        
+                        logger.info("After job.outputs()")
+
                         # Extract logic
                         if outputs:
+                            # ... (keep extraction logic)
                             for item in outputs:
                                 if isinstance(item, (list, tuple)):
                                     for subitem in item:
@@ -753,11 +761,11 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                                     video_path = item.get('video') or item.get('path')
                                     if video_path: break
                                 if video_path: break
-                        
+
                         if not video_path:
                             logger.error(f"❌ Job finished but no video path found in outputs: {repr(outputs)}")
                             raise RuntimeError("No video path found in Wan2.1 response")
-                        
+
                         logger.info(f"✅ Video path found: {video_path}")
                         break
                     elif current_status == "FAILED":
@@ -766,8 +774,8 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                         raise RuntimeError("Job was cancelled")
 
                 except Exception as e:
-                    logger.error(f"Error checking status: {e}")
-                    # traceback...
+                    logger.error(f"Error checking status/outputs: {e}")
+                    raise # Propagate error to trigger retry_with_backoff
 
                 time.sleep(5) # 5s interval
 
