@@ -13,6 +13,7 @@ import sqlite3
 import urllib.parse
 import socket
 import shutil
+import subprocess
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image, ImageDraw, ImageFont
