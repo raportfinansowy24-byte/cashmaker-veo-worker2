@@ -736,7 +736,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                     16,                              # [13] Video Fluidity/FPS
                     True,                            # [14] Safe Mode
                     True,                            # [15] Display result
-                    api_name="/generate_video"
+                    api_name="/generate"
                 )
             finally:
                 # Clean up the temporary blank image
