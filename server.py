@@ -779,6 +779,10 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
             
             if not video_path:
                 raise RuntimeError("No video path found in Wan2.1 response")
+            
+            return video_path
+
+        except Exception as e:
             logger.error(f"❌ Wan2.1 API error: {e}")
             if "overloaded" in str(e).lower() or "busy" in str(e).lower() or "503" in str(e):
                 raise RuntimeError("Space overloaded – retry")
