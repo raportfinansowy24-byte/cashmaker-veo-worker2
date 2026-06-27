@@ -720,64 +720,61 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 api_name="/t2v_generation_async"
             )
 
-            logger.info("✅ Job submitted, waiting for completion (polling)...")
+            logger.info("✅ Job submitted, waiting for completion (polling outputs)...")
 
             # Polling instead of job.result() directly, to handle update messages gracefully
             start_time = time.time()
-            final_result = None
+            video_path = None
             
             while time.time() - start_time < 1200:
-                # Sprawdzamy status joba
+                # Sprawdzamy wyjścia joba w poszukiwaniu danych
+                try:
+                    outputs = job.outputs()
+                    logger.debug(f"Current outputs: {repr(outputs)}")
+                    
+                    # Logika ekstrakcji: szukamy 'video' lub 'path' w strukturze wyjść
+                    if outputs:
+                        # Przeszukujemy strukturę wyjść (może być listą lub krotką)
+                        for item in outputs:
+                            # Obsługa struktury typu (data1, data2)
+                            if isinstance(item, (list, tuple)):
+                                for subitem in item:
+                                    if isinstance(subitem, dict):
+                                        if 'video' in subitem and subitem['video']:
+                                            video_path = subitem['video']
+                                            break
+                                        elif 'path' in subitem and subitem['path']:
+                                            video_path = subitem['path']
+                                            break
+                            # Obsługa bezpośrednich słowników w liście
+                            elif isinstance(item, dict):
+                                if 'video' in item and item['video']:
+                                    video_path = item['video']
+                                    break
+                                elif 'path' in item and item['path']:
+                                    video_path = item['path']
+                                    break
+                            
+                            if video_path: break
+                    
+                    if video_path:
+                        logger.info("✅ Video path found!")
+                        break
+                        
+                except Exception as e:
+                    logger.debug(f"Polling outputs failed (likely still processing): {e}")
+
+                # Sprawdzamy czy job nie wywalił się
                 status = job.status()
-                logger.info(f"⏳ Job status: {status.code}")
-                
-                if status.code.value == "FINISHED":
-                    final_result = job.outputs()
-                    break
-                elif status.code.value == "FAILED":
+                if status.code.value == "FAILED":
                     raise RuntimeError(f"Job failed: {status.error_details}")
                 
-                # Używamy job.outputs() też w trakcie, bo czasami tam lądują update'y
-                # ale interesuje nas wynik finalny tylko w FINISHED
                 time.sleep(15)
             else:
                 raise TimeoutError("Wan2.1 generation timed out (20min limit)")
 
-            if final_result is None:
-                raise RuntimeError("Job finished but no outputs were retrieved.")
-
-            result = final_result
-            
-            # DIAGNOSTYKA:
-            logger.error(f"❌ DIAGNOSTICS: Result type: {type(result)}")
-            if isinstance(result, (list, tuple)):
-                for i, item in enumerate(result):
-                    logger.error(f"❌ DIAGNOSTICS: Item {i} type: {type(item)}, content: {repr(item)}")
-            else:
-                logger.error(f"❌ DIAGNOSTICS: Result content: {repr(result)}")
-            
-            # Try to extract the video path from the Gradio result structure
-            video_path = None
-            
-            # The result might be a list containing updates and the final result
-            if isinstance(result, (list, tuple)):
-                # Search for the video path in the result structure
-                for item in result:
-                    if isinstance(item, dict):
-                        if 'video' in item and item['video']:
-                            video_path = item['video']
-                            break
-                        # Sometimes the path is inside a list in the dict
-                        elif 'path' in item and item['path']:
-                            video_path = item['path']
-                            break
-            elif isinstance(result, dict):
-                 if 'video' in result and result['video']:
-                    video_path = result['video']
-                 elif 'path' in result and result['path']:
-                    video_path = result['path']
-            
             if not video_path:
+                logger.error(f"❌ DIAGNOSTICS: Could not find video path. Final output: {repr(outputs)}")
                 raise RuntimeError("No video path found in Wan2.1 response")
             
             return video_path
