@@ -728,14 +728,24 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
 
             # Try to extract the video path from the Gradio result structure
             video_path = None
-            if isinstance(result, dict) and 'video' in result:
-                video_path = result['video']
-            elif isinstance(result, (list, tuple)):
-                # Search for the video path in the result structure
+            
+            # The result might be a list containing updates and the final result
+            if isinstance(result, (list, tuple)):
+                # Search for the video path in the result structure, ignoring updates
                 for item in result:
-                    if isinstance(item, dict) and 'video' in item:
-                        video_path = item['video']
-                        break
+                    if isinstance(item, dict):
+                        if 'video' in item and item['video']:
+                            video_path = item['video']
+                            break
+                        # Sometimes the path is inside a list in the dict
+                        elif 'path' in item and item['path']:
+                            video_path = item['path']
+                            break
+            elif isinstance(result, dict):
+                 if 'video' in result and result['video']:
+                    video_path = result['video']
+                 elif 'path' in result and result['path']:
+                    video_path = result['path']
             
             if not video_path:
                 logger.error(f"❌ Could not find video path in result: {result}")
