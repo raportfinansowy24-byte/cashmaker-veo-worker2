@@ -708,6 +708,8 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
 # ... inside _call_api() ...
                     if current_status == "FINISHED":
                         logger.info("Job finished, retrieving result...")
+                        result = None
+                        outputs = None
                         try:
                             # Try job.result() first (modern Gradio approach)
                             result = job.result()
