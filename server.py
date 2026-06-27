@@ -747,8 +747,38 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 raise RuntimeError("Job finished but no outputs were retrieved.")
 
             result = final_result
-
-        except Exception as e:
+            
+            # DIAGNOSTYKA:
+            logger.error(f"❌ DIAGNOSTICS: Result type: {type(result)}")
+            if isinstance(result, (list, tuple)):
+                for i, item in enumerate(result):
+                    logger.error(f"❌ DIAGNOSTICS: Item {i} type: {type(item)}, content: {repr(item)}")
+            else:
+                logger.error(f"❌ DIAGNOSTICS: Result content: {repr(result)}")
+            
+            # Try to extract the video path from the Gradio result structure
+            video_path = None
+            
+            # The result might be a list containing updates and the final result
+            if isinstance(result, (list, tuple)):
+                # Search for the video path in the result structure
+                for item in result:
+                    if isinstance(item, dict):
+                        if 'video' in item and item['video']:
+                            video_path = item['video']
+                            break
+                        # Sometimes the path is inside a list in the dict
+                        elif 'path' in item and item['path']:
+                            video_path = item['path']
+                            break
+            elif isinstance(result, dict):
+                 if 'video' in result and result['video']:
+                    video_path = result['video']
+                 elif 'path' in result and result['path']:
+                    video_path = result['path']
+            
+            if not video_path:
+                raise RuntimeError("No video path found in Wan2.1 response")
             logger.error(f"❌ Wan2.1 API error: {e}")
             if "overloaded" in str(e).lower() or "busy" in str(e).lower() or "503" in str(e):
                 raise RuntimeError("Space overloaded – retry")
