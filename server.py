@@ -549,7 +549,7 @@ Only output the JSON, nothing else."""
 
     def _call_gemini():
         response = GEMINI_CLIENT.models.generate_content(
-            model="gemini-3.1-flash-lite-lite-lite",
+            model="gemini-3.1-flash-lite-lite",
             contents=gemini_prompt
         )
         return response.text.strip()
@@ -638,7 +638,7 @@ Return ONLY the video prompt, no explanations or JSON."""
 
     try:
         def _call_gemini():
-            response = GEMINI_CLIENT.models.generate_content(model="gemini-3.1-flash-lite", contents=gemini_prompt)
+            response = GEMINI_CLIENT.models.generate_content(model="gemini-3.1-flash-lite-lite", contents=gemini_prompt)
             return response.text.strip()
 
         story_prompt = retry_with_backoff("Gemini story prompt", _call_gemini, max_retries=2, base_delay=5)
@@ -712,7 +712,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
             from gradio_client import Client, handle_file
             
             # Create client without auth (guest access)
-            client = Client(hf_token=None, 
+            client = Client(
                 "Wan-AI/Wan2.1"
             )
 
