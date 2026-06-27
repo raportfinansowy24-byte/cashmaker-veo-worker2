@@ -638,7 +638,7 @@ Return ONLY the video prompt, no explanations or JSON."""
 
     try:
         def _call_gemini():
-            response = GEMINI_CLIENT.models.generate_content(model="gemini-2.0-flash", contents=gemini_prompt)
+            response = GEMINI_CLIENT.models.generate_content(model="gemini-3.1-flash-lite-lite", contents=gemini_prompt)
             return response.text.strip()
 
         story_prompt = retry_with_backoff("Gemini story prompt", _call_gemini, max_retries=2, base_delay=5)
