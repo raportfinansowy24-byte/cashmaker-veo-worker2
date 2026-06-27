@@ -17,7 +17,7 @@ PIPER_VOICE_DIR = os.path.expanduser("~/.local/share/piper/voices")
 def ensure_voice_downloaded():
     """Check if the Polish Piper voice model is cached; download it if not.
 
-    Uses `piper --download-voice` CLI to fetch and cache the model in the default
+    Uses `piper` CLI with --data-dir to fetch and cache the model in the default
     Piper voice directory (~/.local/share/piper/voices/).
 
     Returns True if the voice is available after the call, False on failure.
@@ -36,21 +36,23 @@ def ensure_voice_downloaded():
 
         logger.info(f"⬇️  Downloading Piper voice model: {PIPER_VOICE} ...")
         
-        # Use piper CLI to download the voice
+        # Use piper CLI to download the voice by running a dummy synthesis
+        # This will trigger the download if the model is not cached
         result = subprocess.run(
-            ["piper", "--download-voice", PIPER_VOICE],
+            ["piper", "--model", PIPER_VOICE, "--data-dir", PIPER_VOICE_DIR],
+            input="test",
             capture_output=True,
             timeout=300,
             text=True
         )
         
-        if result.returncode != 0:
-            logger.warning(f"⚠️  Piper download returned code {result.returncode}: {result.stderr}")
-            # Don't fail - voice might be downloaded on first use
+        # Check if model files exist now
+        if os.path.exists(model_file) and os.path.exists(config_file):
+            logger.info(f"✅ Piper voice downloaded and cached: {PIPER_VOICE}")
+            return True
+        else:
+            logger.warning(f"⚠️  Piper voice files not found after download attempt")
             return False
-        
-        logger.info(f"✅ Piper voice downloaded and cached: {PIPER_VOICE}")
-        return True
 
     except Exception as e:
         logger.warning(
@@ -108,4 +110,3 @@ def generate_piper_tts(text: str, output_path: str) -> str:
 # so that the first TTS call is not delayed by a network download.
 # ---------------------------------------------------------------------------
 ensure_voice_downloaded()
-
