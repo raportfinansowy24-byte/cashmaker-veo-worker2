@@ -578,7 +578,7 @@ Return ONLY the video prompt, no explanations or JSON."""
 
 
 def generate_wan_video(prompt: str, output_path: str):
-    """Generate video via Wan2.2 (FAL AI) and save to output_path."""
+    """Generate video via Wan2.2 (FAL AI) and save to output_path atomically."""
     if not HF_CLIENT:
         raise RuntimeError("HF_CLIENT not initialized. Call init_hf_client() first.")
     
@@ -608,13 +608,22 @@ def generate_wan_video(prompt: str, output_path: str):
     if not hasattr(video, 'read'):
         raise RuntimeError(f"Invalid response from Wan2.2: expected file-like object, got {type(video)}")
     
+    import tempfile
+    
+    # Używamy tymczasowego pliku i atomicznej operacji rename, aby uniknąć uszkodzenia pliku wyjściowego
+    fd, tmp_file = tempfile.mkstemp(dir=os.path.dirname(output_path), suffix=".mp4")
     try:
-        logger.info(f"💾 Streaming video to {output_path}...")
-        with open(output_path, "wb") as f:
+        logger.info(f"💾 Streaming video to temporary file {tmp_file}...")
+        with os.fdopen(fd, "wb") as f:
             shutil.copyfileobj(video, f)
+        
+        # Atomic rename
+        os.replace(tmp_file, output_path)
         logger.info(f"✅ Video saved to {output_path}")
     except Exception as e:
         logger.error(f"❌ Failed to save video: {e}")
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)
         raise
     
     return output_path
@@ -896,29 +905,25 @@ def generate_nava_video(
         raise RuntimeError(f"No video path found in NAVA /generate response: {result}")
 
     # Download or copy the video to a local temp file
-    local_tmp = os.path.join(tempfile.gettempdir(), f"nava_{uuid.uuid4().hex}.mp4")
-    if video_path.startswith("http"):
-        logger.info(f"📥 Downloading NAVA video from {video_path[:80]}...")
-        resp = requests.get(video_path, timeout=300)
-        resp.raise_for_status()
-        with open(local_tmp, "wb") as fh:
-            fh.write(resp.content)
-    else:
-        shutil.copy(video_path, local_tmp)
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        local_tmp = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.mp4")
+        if video_path.startswith("http"):
+            logger.info(f"📥 Downloading NAVA video from {video_path[:80]}...")
+            resp = requests.get(video_path, timeout=300)
+            resp.raise_for_status()
+            with open(local_tmp, "wb") as fh:
+                fh.write(resp.content)
+        else:
+            shutil.copy(video_path, local_tmp)
 
-    logger.info(f"✅ NAVA video saved locally: {local_tmp}")
+        logger.info(f"✅ NAVA video saved locally: {local_tmp}")
 
-    # Upload to S3 and return the public URL
-    object_key = f"nava/{uuid.uuid4().hex}.mp4"
-    try:
+        # Upload to S3 and return the public URL
+        object_key = f"nava/{uuid.uuid4().hex}.mp4"
         public_url = _upload_video_to_s3(local_tmp, object_key)
-    finally:
-        try:
-            os.unlink(local_tmp)
-        except OSError:
-            pass
-
-    return public_url
+        
+        return public_url
 
 
 
