@@ -62,6 +62,16 @@ def init_gemini_client():
         if not gemini_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set")
         GEMINI_CLIENT = genai.Client(api_key=gemini_key)
+
+        logger.info("Gemini client type: %s", type(GEMINI_CLIENT))
+        logger.info("Has models: %s", hasattr(GEMINI_CLIENT, "models"))
+
+        if hasattr(GEMINI_CLIENT, "models"):
+            logger.info(
+                "Has models.generate_content: %s",
+                hasattr(GEMINI_CLIENT.models, "generate_content")
+            )
+
         logger.info("✅ Google Gemini Client initialized for story prompts")
     except Exception as e:
         logger.error(f"❌ Failed to initialize GEMINI_CLIENT: {e}")
