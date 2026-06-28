@@ -702,84 +702,36 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 api_name="/t2v_generation_async"
             )
             logger.info("After client.submit()")
-            logger.info("Wan2.1 Initial Response: %s", str(job))
+            
+            logger.info("✅ Job submitted. Waiting for completion using job.result()...")
 
-            # Try to get a job identifier (gradio_client returns a Future-like object)
-            job_identifier = getattr(job, "job_id", "unknown_id")
-            logger.info(f"✅ Job submitted: {job_identifier}. Polling for completion...")
-
-            start_time = time.time()
+            # Blocking call that waits until the job is done
+            result = job.result()
+            logger.info("✅ Job finished, retrieving result...")
+            
+            # The result from job.result() is likely the same structure as what status_refresh returned
+            logger.debug("DEBUG: Job result: %r", result)
+            
             video_path = None
-            polling_attempt = 0
-
-            # Polling loop
-            while time.time() - start_time < MAX_JOB_DURATION_SECONDS:
-                polling_attempt += 1
-                elapsed = time.time() - start_time
-
-                # Check status first (non-blocking)
-                try:
-                    logger.info("Before job.status()")
-                    status = job.status()
-                    logger.info("After job.status()")
-                    logger.info("Wan2.1 Status Check: %s", str(status))
-
-                    current_status = status.code.value
-                    logger.info(f"Polling attempt #{polling_attempt} | Elapsed: {elapsed:.0f}s | Status: {current_status}")
-                    
-                    # Log full objects for debugging
-                    logger.debug(f"DEBUG: Status object: {status}")
-                    try:
-                        logger.debug(f"DEBUG: Job result: {job.result()}")
-                    except Exception as e:
-                        logger.debug(f"DEBUG: Job result not available yet: {e}")
-                    try:
-                        logger.debug(f"DEBUG: Job outputs: {job.outputs()}")
-                    except Exception as e:
-                        logger.debug(f"DEBUG: Job outputs not available yet: {e}")
-
-# ... inside _call_api() ...
-                    if current_status == "FINISHED":
-                        logger.info("Job finished, retrieving result...")
-                        result = None
-                        outputs = None
-                        
-                        # Get result via status_refresh
-                        outputs = client.predict(api_name="/status_refresh")
-                        logger.info("DEBUG: status_refresh output: %r", outputs)
-                        video_path = None
-                        
-                        if isinstance(outputs, (list, tuple)):
-                            for i, item in enumerate(outputs):
-                                logger.info("DEBUG: status_refresh item[%d]: %r", i, item)
-                                if isinstance(item, dict) and "video" in item:
-                                    video_path = item["video"]
-                                    break
-                        else:
-                            logger.error("DEBUG: status_refresh output is not iterable: %r", type(outputs))
-
-                        if not video_path:
-                            logger.error("No video found in status_refresh output")
-                            return None
-                        
-                        logger.info(f"✅ Video path found: {video_path}")
+            
+            # Parsing the result (adjusting for the structure returned by result())
+            if isinstance(result, (list, tuple)):
+                for i, item in enumerate(result):
+                    logger.info("DEBUG: item[%d]: %r", i, item)
+                    if isinstance(item, dict) and "video" in item:
+                        video_path = item["video"]
                         break
-
-                    elif current_status == "FAILED":
-                        raise RuntimeError(f"Job failed: {status.error_details}")
-                    elif current_status == "CANCELLED":
-                        raise RuntimeError("Job was cancelled")
-
-                except Exception as e:
-                    logger.error(f"Error checking status/outputs: {e}")
-                    raise # Propagate error to trigger retry_with_backoff
-
-                time.sleep(5) # 5s interval
-
+                    elif isinstance(item, str) and (item.endswith('.mp4') or item.startswith('http')):
+                        video_path = item
+                        break
+            elif isinstance(result, dict):
+                video_path = result.get("video")
+            
             if not video_path:
-                raise RuntimeError("Timed out or failed to retrieve video path from Wan2.1")
-
-            # Extract video_path from outputs...
+                logger.error("No video found in result: %r", result)
+                return None
+            
+            logger.info(f"✅ Video path found: {video_path}")
 
             # Download with retry mechanism
             def _download_video():
