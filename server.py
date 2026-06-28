@@ -763,6 +763,12 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                         if not video_path:
                             logger.info("Trying job.outputs() fallback...")
                             outputs = job.outputs()
+                            logger.info("JOB OUTPUTS TYPE: %s", type(outputs))
+                            logger.info("JOB OUTPUTS RAW: %r", outputs)
+
+                            if isinstance(outputs, (list, tuple)):
+                                for i, item in enumerate(outputs):
+                                    logger.info("OUTPUT[%d] TYPE=%s VALUE=%r", i, type(item), item)
                             logger.debug(f"DEBUG: Job outputs: {outputs}")
                             video_path = parse_gradio_result(outputs)
                         
