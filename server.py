@@ -1165,28 +1165,35 @@ def generate_video_with_speed_adjustment(segment_files, speed=1.0):
     
     logger.info(f"⏱️ Dopasowywanie prędkości wszystkich segmentów do {speed:.2f}x...")
     
-    speed_adjusted_files = []
+    import tempfile
     
-    for i, video_file in enumerate(segment_files):
-        output_file = os.path.join(tempfile.gettempdir(), f"speed_{i}_{os.urandom(4).hex()}.mp4")
+    # Używamy TemporaryDirectory, aby zapewnić automatyczne czyszczenie plików nawet w przypadku błędu
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        speed_adjusted_files = []
         
-        # POPRAWKA STABILNOŚCI: Zapobieganie throttlowaniu CPU na Railway
-        ffmpeg_cmd = [
-            'ffmpeg', '-y', '-i', video_file,
-            '-vf', f"setpts=PTS/{speed}",
-            '-af', build_atempo_chain(speed),
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '2',
-            '-c:a', 'aac',
-            '-movflags', '+faststart',
-            output_file
-        ]
+        for i, video_file in enumerate(segment_files):
+            output_file = os.path.join(tmp_dir, f"speed_{i}.mp4")
+            
+            # POPRAWKA STABILNOŚCI: Zapobieganie throttlowaniu CPU na Railway
+            ffmpeg_cmd = [
+                'ffmpeg', '-y', '-i', video_file,
+                '-vf', f"setpts=PTS/{speed}",
+                '-af', build_atempo_chain(speed),
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '2',
+                '-c:a', 'aac',
+                '-movflags', '+faststart',
+                output_file
+            ]
+            
+            logger.info(f"  ⏱️ Segment {i}: {speed:.2f}x")
+            vp.run_ffmpeg(ffmpeg_cmd, timeout=180)
+            
+            # Kopiujemy plik do trwałej lokalizacji przed zamknięciem TemporaryDirectory
+            permanent_output = os.path.join(tempfile.gettempdir(), f"speed_{i}_{os.urandom(4).hex()}.mp4")
+            shutil.copy(output_file, permanent_output)
+            speed_adjusted_files.append(permanent_output)
         
-        logger.info(f"  ⏱️ Segment {i}: {speed:.2f}x")
-        vp.run_ffmpeg(ffmpeg_cmd, timeout=180)
-        
-        speed_adjusted_files.append(output_file)
-    
-    return speed_adjusted_files
+        return speed_adjusted_files
 
 # ---------------------------------------------------------------------------
 # ŁĄCZENIE WIDEO + AUDIO + NAPISY + WATERMARK
@@ -1201,117 +1208,108 @@ def concat_video_with_audio_and_subtitles(video_files, audio_files, srt_file, jo
         logger.info(f"⏩ Finalne wideo {job_id} już istnieje. Pomijam renderowanie.")
         return output_path
     
-    list_file_path = os.path.join(tempfile.gettempdir(), f"list_{job_id}.txt")
-    with open(list_file_path, "w") as f:
-        for video_file in video_files:
-            f.write(f"file '{video_file}'\n")
+    import tempfile
     
-    logger.info("🎬 Etap 1: Łączenie segmentów wideo (FFmpeg concat)...")
-    
-    concat_output = os.path.join(tempfile.gettempdir(), f"concat_{job_id}.mp4")
-    ffmpeg_concat_cmd = [
-        'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', list_file_path,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '2', '-crf', '23',
-        '-c:a', 'aac', '-b:a', '128k',
-        '-movflags', '+faststart',
-        concat_output
-    ]
-    vp.run_ffmpeg(ffmpeg_concat_cmd, timeout=120)
-    logger.info(f"✅ Wideo połączone: {concat_output}")
-    
-    logger.info("🎙️ Etap 2: Miksowanie audio (lektory)...")
-
-    combined_audio = os.path.join(tempfile.gettempdir(), f"combined_audio_{job_id}.mp3")
-    audio_list_file = os.path.join(tempfile.gettempdir(), f"audio_list_{job_id}.txt")
-
-    # Collect audio entries that actually exist on disk
-    audio_entries = [
-        audio_files[k]["path"]
-        for k in ["hook", "problem", "rozwiązanie"]
-        if k in audio_files and os.path.exists(audio_files[k]["path"])
-    ]
-    has_audio = bool(audio_entries)
-
-    if has_audio:
-        with open(audio_list_file, "w") as f:
-            for path in audio_entries:
-                f.write(f"file '{path}'\n")
-
-        ffmpeg_audio_concat = [
-            'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', audio_list_file,
-            '-c:a', 'libmp3lame', '-q:a', '4',
-            combined_audio
-        ]
-        vp.run_ffmpeg(ffmpeg_audio_concat, timeout=120)
-        logger.info(f"✅ Lektory połączone: {combined_audio}")
-    else:
-        logger.info("⏭️  Brak ścieżek audio – montaż wideo bez dźwięku.")
-
-    logger.info("🎨 Etap 3: Miksowanie wideo + audio + napisy...")
-
-    # BŁĄD LOGICZNY USUNIĘTY: Skoro speed robimy w innej funkcji, tu dajemy zwykłe kopiowanie strumienia video (bez setpts)
-    # Zostawiamy po prostu wejście wideo bez modyfikacji czasu, żeby nie podwoić przyspieszenia.
-
-    # Budujemy łańcuch filtrów
-    filters = []
-
-    if srt_file and os.path.exists(srt_file):
-        if vp.ffmpeg_supports_subtitles():
-            srt_path_escaped = srt_file.replace("\\", "\\\\").replace(":", "\\:")
-            # Eleganckie, wyraźne napisy dopasowane do profesjonalnego brandingu
-            filters.append(f"subtitles='{srt_path_escaped}':force_style='FontSize=28,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=2,Shadow=0'")
-            logger.info(f"✅ Napisy będą wypalane")
-
-        else:
-            logger.warning("⚠️ FFmpeg subtitles filter not available (libass missing). Skipping subtitles.")
-
-    watermark_text = "raport-finansowy24.pl"
-    filters.append(f"drawtext=text='{watermark_text}':x=w-text_w-20:y=h-text_h-20:fontsize=24:fontcolor=white@0.7:box=1:boxcolor=black@0.5")
-
-    # Łączymy filtry wideo przecinkami
-    final_video_filter = ",".join(filters)
-
-    if has_audio:
-        ffmpeg_final_cmd = [
-            'ffmpeg', '-y',
-            '-i', concat_output,
-            '-i', combined_audio,
-            '-filter_complex',
-            f"[0:v]{final_video_filter}[vout];[1:a]volume=1.0[aout]",
-            '-map', '[vout]', '-map', '[aout]',
-            # STABILNOŚĆ: ultrafast i threads=2 zapobiegną zabiciu procesu przez Gunicorn
+    # Używamy TemporaryDirectory, aby zapewnić automatyczne czyszczenie plików nawet w przypadku błędu
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        list_file_path = os.path.join(tmp_dir, f"list_{job_id}.txt")
+        with open(list_file_path, "w") as f:
+            for video_file in video_files:
+                f.write(f"file '{video_file}'\n")
+        
+        logger.info("🎬 Etap 1: Łączenie segmentów wideo (FFmpeg concat)...")
+        
+        concat_output = os.path.join(tmp_dir, f"concat_{job_id}.mp4")
+        ffmpeg_concat_cmd = [
+            'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', list_file_path,
             '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '2', '-crf', '23',
             '-c:a', 'aac', '-b:a', '128k',
-            output_path
+            '-movflags', '+faststart',
+            concat_output
         ]
-    else:
-        # No audio track – video-only output (SKIP_NARRATION mode)
-        ffmpeg_final_cmd = [
-            'ffmpeg', '-y',
-            '-i', concat_output,
-            '-filter_complex',
-            f"[0:v]{final_video_filter}[vout]",
-            '-map', '[vout]',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '2', '-crf', '23',
-            '-an',
-            output_path
+        vp.run_ffmpeg(ffmpeg_concat_cmd, timeout=120)
+        logger.info(f"✅ Wideo połączone: {concat_output}")
+        
+        logger.info("🎙️ Etap 2: Miksowanie audio (lektory)...")
+
+        combined_audio = os.path.join(tmp_dir, f"combined_audio_{job_id}.mp3")
+        audio_list_file = os.path.join(tmp_dir, f"audio_list_{job_id}.txt")
+
+        # Collect audio entries that actually exist on disk
+        audio_entries = [
+            audio_files[k]["path"]
+            for k in ["hook", "problem", "rozwiązanie"]
+            if k in audio_files and os.path.exists(audio_files[k]["path"])
         ]
+        has_audio = bool(audio_entries)
 
-    logger.info("🔄 Kodowanie finale (może potrwać trochę)...")
-    vp.run_ffmpeg(ffmpeg_final_cmd, timeout=300)
-    logger.info(f"✅ Finalne wideo: {output_path}")
+        if has_audio:
+            with open(audio_list_file, "w") as f:
+                for path in audio_entries:
+                    f.write(f"file '{path}'\n")
 
-    cleanup_files = [list_file_path, concat_output]
-    if has_audio:
-        cleanup_files += [audio_list_file, combined_audio]
-    for file in cleanup_files:
-        if os.path.exists(file):
-            try:
-                os.remove(file)
-            except Exception as e:
-                logger.warning(f"⚠️ Nie udało się usunąć {file}: {e}")
+            ffmpeg_audio_concat = [
+                'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', audio_list_file,
+                '-c:a', 'libmp3lame', '-q:a', '4',
+                combined_audio
+            ]
+            vp.run_ffmpeg(ffmpeg_audio_concat, timeout=120)
+            logger.info(f"✅ Lektory połączone: {combined_audio}")
+        else:
+            logger.info("⏭️  Brak ścieżek audio – montaż wideo bez dźwięku.")
 
-    return output_path
+        logger.info("🎨 Etap 3: Miksowanie wideo + audio + napisy...")
+
+        # Budujemy łańcuch filtrów
+        filters = []
+
+        if srt_file and os.path.exists(srt_file):
+            if vp.ffmpeg_supports_subtitles():
+                srt_path_escaped = srt_file.replace("\\", "\\\\").replace(":", "\\:")
+                # Eleganckie, wyraźne napisy dopasowane do profesjonalnego brandingu
+                filters.append(f"subtitles='{srt_path_escaped}':force_style='FontSize=28,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=2,Shadow=0'")
+                logger.info(f"✅ Napisy będą wypalane")
+
+            else:
+                logger.warning("⚠️ FFmpeg subtitles filter not available (libass missing). Skipping subtitles.")
+
+        watermark_text = "raport-finansowy24.pl"
+        filters.append(f"drawtext=text='{watermark_text}':x=w-text_w-20:y=h-text_h-20:fontsize=24:fontcolor=white@0.7:box=1:boxcolor=black@0.5")
+
+        # Łączymy filtry wideo przecinkami
+        final_video_filter = ",".join(filters)
+
+        if has_audio:
+            ffmpeg_final_cmd = [
+                'ffmpeg', '-y',
+                '-i', concat_output,
+                '-i', combined_audio,
+                '-filter_complex',
+                f"[0:v]{final_video_filter}[vout];[1:a]volume=1.0[aout]",
+                '-map', '[vout]', '-map', '[aout]',
+                # STABILNOŚĆ: ultrafast i threads=2 zapobiegną zabiciu procesu przez Gunicorn
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '2', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '128k',
+                output_path
+            ]
+        else:
+            # No audio track – video-only output (SKIP_NARRATION mode)
+            ffmpeg_final_cmd = [
+                'ffmpeg', '-y',
+                '-i', concat_output,
+                '-filter_complex',
+                f"[0:v]{final_video_filter}[vout]",
+                '-map', '[vout]',
+                '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '2', '-crf', '23',
+                '-an',
+                output_path
+            ]
+
+        logger.info("🔄 Kodowanie finale (może potrwać trochę)...")
+        vp.run_ffmpeg(ffmpeg_final_cmd, timeout=300)
+        logger.info(f"✅ Finalne wideo: {output_path}")
+
+        return output_path
 
 # ---------------------------------------------------------------------------
 # GŁÓWNY PROCES RENDEROWANIA
