@@ -1575,27 +1575,15 @@ def render_sequence_background(job_id, raw_data, webhook_url=None, resume_from=N
                 METRICS["webhook_failed"] += 1
         METRICS["jobs_success"] += 1
 
+    except TimeoutError as e:
+        logger.error(f"❌ Job {job_id} TIMED OUT at '{current_stage}': {e}")
+        handle_job_failure(job_id, topic, current_stage, str(e), webhook_url)
+    except ValueError as e:
+        logger.error(f"❌ Job {job_id} VALIDATION ERROR at '{current_stage}': {e}")
+        handle_job_failure(job_id, topic, current_stage, str(e), webhook_url)
     except Exception as e:
         logger.error(f"❌ BŁĄD KRYTYCZNY Job {job_id} na etapie '{current_stage}': {e}", exc_info=True)
-        METRICS["jobs_failed"] += 1
-        METRICS["last_error"] = str(e)
-
-        save_render_to_db(job_id, topic, 'failed', error=str(e))
-        logger.error(f"❌ Job {job_id} FAILED at '{current_stage}': {e}")
-
-        if webhook_url:
-            try:
-                webhook_payload = {
-                    "event_type": "render.failed",
-                    "job_id": job_id,
-                    "status": "failed",
-                    "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                send_webhook(webhook_url, webhook_payload)
-                logger.info(f"🔔 Webhook błędu wysłany")
-            except Exception as webhook_error:
-                logger.error(f"⚠️ Błąd webhook: {webhook_error}")
+        handle_job_failure(job_id, topic, current_stage, str(e), webhook_url)
 
     finally:
         RENDER_SEMAPHORE.release()
@@ -2099,3 +2087,24 @@ retry_thread = threading.Thread(target=auto_retry_worker, daemon=True)
 retry_thread.start()
 logger.info("✅ Auto-retry worker started")
 if __name__ == '__main__': app.run(host='0.0.0.0', port=5000)
+def handle_job_failure(job_id, topic, stage, error, webhook_url):
+    """Helper to handle job failure, update DB, and send webhook."""
+    METRICS["jobs_failed"] += 1
+    METRICS["last_error"] = error
+
+    save_render_to_db(DB_PATH, job_id, topic, 'failed', error=error)
+    logger.error(f"❌ Job {job_id} FAILED at '{stage}': {error}")
+
+    if webhook_url:
+        try:
+            webhook_payload = {
+                "event_type": "render.failed",
+                "job_id": job_id,
+                "status": "failed",
+                "error": error,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            send_webhook(webhook_url, webhook_payload)
+            logger.info(f"🔔 Webhook błędu wysłany")
+        except requests.RequestException as webhook_error:
+            logger.error(f"⚠️ Błąd webhook: {webhook_error}")
