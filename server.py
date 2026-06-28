@@ -746,11 +746,17 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                         
                         # Get result via status_refresh
                         outputs = client.predict(api_name="/status_refresh")
+                        logger.info("DEBUG: status_refresh output: %r", outputs)
                         video_path = None
-                        for item in outputs:
-                            if isinstance(item, dict) and "video" in item:
-                                video_path = item["video"]
-                                break
+                        
+                        if isinstance(outputs, (list, tuple)):
+                            for i, item in enumerate(outputs):
+                                logger.info("DEBUG: status_refresh item[%d]: %r", i, item)
+                                if isinstance(item, dict) and "video" in item:
+                                    video_path = item["video"]
+                                    break
+                        else:
+                            logger.error("DEBUG: status_refresh output is not iterable: %r", type(outputs))
 
                         if not video_path:
                             logger.error("No video found in status_refresh output")
