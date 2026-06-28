@@ -611,47 +611,48 @@ def generate_wan_video(prompt: str, output_path: str):
 
 
 def parse_gradio_result(result):
-    """Parses Gradio result to extract a video path."""
+    """Parses Gradio result to extract a video path, more robustly."""
     logger.debug(f"DEBUG: Parsing Gradio result: {result}")
-    
-    # Define potential keys for video path
-    path_keys = ['video', 'path', 'url', 'file']
-    
-    def _extract_from_dict(d):
-        if not isinstance(d, dict):
-            return None
-        # Skip Gradio update messages
-        if d.get('__type__') == 'update':
-            return None
-        for key in path_keys:
-            if key in d:
-                val = d[key]
-                # If it's a Gradio file object, it might have a 'path' attribute or be a dict itself
-                if hasattr(val, 'path'): return val.path
-                if isinstance(val, dict) and 'path' in val: return val['path']
-                return val
+
+    def _is_video_path(val):
+        if not isinstance(val, str):
+            return False
+        # Check if it looks like a file path or URL
+        if not (val.startswith(('http', '/')) or val.endswith(('.mp4', '.avi', '.mov'))):
+            return False
+        return True
+
+    def _extract_recursive(data):
+        if isinstance(data, dict):
+            # Skip Gradio update messages
+            if data.get('__type__') == 'update':
+                return None
+
+            # Check values
+            for val in data.values():
+                found = _extract_recursive(val)
+                if found:
+                    return found
+
+        elif isinstance(data, (list, tuple)):
+            for item in data:
+                found = _extract_recursive(item)
+                if found:
+                    return found
+
+        elif isinstance(data, str):
+            if _is_video_path(data):
+                return data
+            # Check for Gradio file object representation
+            if hasattr(data, 'path'): return data.path
+
+        # Check for Gradio file object
+        if hasattr(data, 'path'):
+            return data.path
+
         return None
 
-    # Handle different result types
-    if isinstance(result, (list, tuple)):
-        for item in result:
-            # Skip Gradio update messages
-            if isinstance(item, dict) and item.get('__type__') == 'update':
-                continue
-            found = _extract_from_dict(item)
-            if found: return found
-            # Sometimes the result is a list of paths/files directly
-            if isinstance(item, str) and item.startswith(('http', '/')): return item
-    elif isinstance(result, dict):
-        # Skip Gradio update messages
-        if result.get('__type__') == 'update':
-            return None
-        return _extract_from_dict(result)
-    elif isinstance(result, str) and result.startswith(('http', '/')):
-        return result
-        
-    return None
-
+    return _extract_recursive(result)
 
 def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
     """Generate a video segment via Wan2.1 API and save it directly to output_path."""
@@ -757,6 +758,9 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                     raise # Propagate error to trigger retry_with_backoff
 
                 time.sleep(5) # 5s interval
+
+            if not video_path:
+                raise RuntimeError("Timed out or failed to retrieve video path from Wan2.1")
 
             # Extract video_path from outputs...
 
