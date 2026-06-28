@@ -744,41 +744,18 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                         result = None
                         outputs = None
                         
-                        # Try job.result() first
-                        try:
-                            result = job.result()
-                            logger.info("Wan2.1 Final Result: %s", str(result))
-                            logger.info("Wan2.1 Final Result Type: %s", type(result))
-                            if isinstance(result, dict):
-                                logger.info("Wan2.1 Result Keys: %s", list(result.keys()))
-                            elif isinstance(result, list):
-                                logger.info("Wan2.1 Result Length: %s", len(result))
-                            logger.debug(f"DEBUG: Job result: {result}")
-                            video_path = parse_gradio_result(result)
-                        except Exception as e:
-                            logger.error(f"Error calling job.result(): {e}")
-                            video_path = None
-                        
-                        # Fallback to outputs if result() was not useful
-                        if not video_path:
-                            logger.info("Trying job.outputs() fallback...")
-                            outputs = job.outputs()
-                            logger.info("JOB OUTPUTS TYPE: %s", type(outputs))
-                            logger.info("JOB OUTPUTS RAW: %r", outputs)
+                        # Get result via status_refresh
+                        outputs = client.predict(api_name="/status_refresh")
+                        video_path = None
+                        for item in outputs:
+                            if isinstance(item, dict) and "video" in item:
+                                video_path = item["video"]
+                                break
 
-                            if isinstance(outputs, (list, tuple)):
-                                for i, item in enumerate(outputs):
-                                    logger.info("OUTPUT[%d] TYPE=%s VALUE=%r", i, type(item), item)
-                            logger.debug(f"DEBUG: Job outputs: {outputs}")
-                            video_path = parse_gradio_result(outputs)
-                        
                         if not video_path:
-                            # Parser returned None (likely update message)
-                            # Don't fail - wait for the real result
-                            logger.info(f"⏳ Result is still update message, waiting for real result... Result={repr(result)}, Outputs={repr(outputs)}")
-                            time.sleep(5)
-                            continue  # Wait for next polling attempt
-
+                            logger.error("No video found in status_refresh output")
+                            return None
+                        
                         logger.info(f"✅ Video path found: {video_path}")
                         break
 
