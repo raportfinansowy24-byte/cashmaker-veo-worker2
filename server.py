@@ -674,6 +674,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
         try:
             from gradio_client import Client
             client = Client("Wan-AI/Wan2.1")
+            logger.info("Wan2.1 Endpoint URL: %s", client.src)
 
             # Mapping aspect_ratio to size
             size = '1280*720'
@@ -683,6 +684,15 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 size = '960*960'
 
             # Submit job asynchronously
+            payload = {
+                "prompt": prompt,
+                "size": size,
+                "watermark_wan": True,
+                "seed": -1,
+                "api_name": "/t2v_generation_async"
+            }
+            logger.info("Wan2.1 API Payload: %s", payload)
+
             logger.info("Before client.submit()")
             job = client.submit(
                 prompt=prompt,
@@ -692,6 +702,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                 api_name="/t2v_generation_async"
             )
             logger.info("After client.submit()")
+            logger.info("Wan2.1 Initial Response: %s", str(job))
 
             # Try to get a job identifier (gradio_client returns a Future-like object)
             job_identifier = getattr(job, "job_id", "unknown_id")
@@ -711,6 +722,7 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                     logger.info("Before job.status()")
                     status = job.status()
                     logger.info("After job.status()")
+                    logger.info("Wan2.1 Status Check: %s", str(status))
 
                     current_status = status.code.value
                     logger.info(f"Polling attempt #{polling_attempt} | Elapsed: {elapsed:.0f}s | Status: {current_status}")
@@ -735,6 +747,12 @@ def generate_hunyuan_video_segment(prompt, output_path, aspect_ratio="9:16"):
                         # Try job.result() first
                         try:
                             result = job.result()
+                            logger.info("Wan2.1 Final Result: %s", str(result))
+                            logger.info("Wan2.1 Final Result Type: %s", type(result))
+                            if isinstance(result, dict):
+                                logger.info("Wan2.1 Result Keys: %s", list(result.keys()))
+                            elif isinstance(result, list):
+                                logger.info("Wan2.1 Result Length: %s", len(result))
                             logger.debug(f"DEBUG: Job result: {result}")
                             video_path = parse_gradio_result(result)
                         except Exception as e:
