@@ -46,7 +46,7 @@ def init_hf_client():
             api_key=hf_token,
         )
         logger.info("✅ HuggingFace Inference Client initialized for Wan2.2")
-    except Exception as e:
+    except (ImportError, ValueError) as e:
         logger.error(f"❌ Failed to initialize HF_CLIENT: {e}")
         raise
 
@@ -73,7 +73,7 @@ def init_gemini_client():
             )
 
         logger.info("✅ Google Gemini Client initialized for story prompts")
-    except Exception as e:
+    except (ImportError, ValueError) as e:
         logger.error(f"❌ Failed to initialize GEMINI_CLIENT: {e}")
         raise
 
