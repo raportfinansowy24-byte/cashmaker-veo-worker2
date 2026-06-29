@@ -223,7 +223,7 @@ def validate_required_env():
         raise RuntimeError("System dependency 'ffprobe' is missing from PATH. Install it first.")
 
     # 2. Walidacja obecności wymaganych zmiennych
-    required = ["HF_TOKEN", "OPENAI_API_KEY", "WORKER_API_KEY"]
+    required = ["HF_TOKEN", "GEMINI_API_KEY", "WORKER_API_KEY"]
     missing = [key for key in required if not os.getenv(key)]
     if missing:
         raise RuntimeError(
@@ -242,15 +242,6 @@ def validate_required_env():
             logger.info("✅ Klucz HF_TOKEN zweryfikowany pomyślnie.")
         except Exception as e:
             raise RuntimeError(f"HF_TOKEN validation failed: {e}")
-            
-        # Walidacja OpenAI
-        try:
-            from openai import OpenAI
-            oa_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            oa_client.models.list()
-            logger.info("✅ Klucz OPENAI_API_KEY zweryfikowany pomyślnie.")
-        except Exception as e:
-            raise RuntimeError(f"OPENAI_API_KEY validation failed: {e}")
 
     else:
         logger.info("🧪 DRY_RUN lub TESTING włączony - pomijam twardą walidację kluczy API.")
