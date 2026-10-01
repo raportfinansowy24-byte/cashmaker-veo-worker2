@@ -1,5 +1,3 @@
-# cashmaker-veo-worker
-
 ## Webhook event contract (standard)
 
 This worker sends webhook callbacks to the URL provided in `webhookUrl` from `POST /render-sequence`.
